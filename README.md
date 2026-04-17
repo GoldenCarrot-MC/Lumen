@@ -1,9 +1,9 @@
 <div align="center">
   <img src="./public/image/lophine/lophine3.png" alt="Lophine Logo" width="300">
   
-  # Lophine
+  # Lumen
   
-  *Lophine 是一个基于Luminol的分支，具有许多有用的优化和可配置的原版特性，目标是在Folia上实现更多生电的内容（请注意，完整生电请使用Fabric）*
+  *Lumen 是一个基于Lophine的分支，具有许多有用的优化和可配置的原版特性，目标是在Folia上实现更多生电的内容（请注意，完整生电请使用Fabric）*
   
   ![Created At](https://img.shields.io/github/created-at/LuminolMC/Lophine?style=for-the-badge&color=blue)
   [![License](https://img.shields.io/github/license/LuminolMC/Lophine?style=for-the-badge&color=green)](LICENSE.md)
@@ -15,7 +15,7 @@
   
   ![Repo contributors](https://img.shields.io/github/contributors/LuminolMC/Lophine?style=for-the-badge&color=brightgreen)
   
-  [English](./README_EN.md) | **中文**
+  **中文**
 </div>
 
 ---
@@ -27,12 +27,13 @@
 - 🐛 **Folia Bug 修复** - 针对 Folia 已知问题的专项修复
 - 💾 **多存档格式支持** - 支持 linear 和 b_linear（linear 重新实现）存档格式
 - 🔬 **生电功能增强** - 在 Folia 上实现更多生电内容（完整生电请使用 Fabric）
+- ✈️ **Bukkit的更多支持** - 在 Folia 上实现更多Bukkit内容
 - 🛠️ **更多实用功能** - 持续添加有用的服务器功能
 
 ## 📥 下载
 
 ### 稳定版本
-所有发布版本都可以在 [Releases](https://github.com/LuminolMC/Lophine/releases) 页面找到。
+所有发布版本都可以在 [Releases](https://github.com/GoldenCarrot-MC/Lophine/releases) 页面找到。
 
 ### 开发版本
 如果您想体验最新功能，可以通过以下步骤自行构建。
