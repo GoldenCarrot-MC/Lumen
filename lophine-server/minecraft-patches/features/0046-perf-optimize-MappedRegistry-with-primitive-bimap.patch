@@ -1,0 +1,118 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: GoldenCarrotMC <tbcnb650388@gmail.com>
+Date: Sat, 18 Apr 2026 12:09:42 +0800
+Subject: [PATCH] perf: optimize MappedRegistry with primitive bimap
+
+
+diff --git a/net/minecraft/core/MappedRegistry.java b/net/minecraft/core/MappedRegistry.java
+index ad1558693564ebd18f5e16b85ae552d2af95efef..2db3b1ced4b592bf60bbec13a3be0529125e834e 100644
+--- a/net/minecraft/core/MappedRegistry.java
++++ b/net/minecraft/core/MappedRegistry.java
+@@ -35,7 +35,8 @@ public class MappedRegistry<T> implements WritableRegistry<T> {
+     private final Reference2IntMap<T> toId = Util.make(new Reference2IntOpenHashMap<>(2048), map -> map.defaultReturnValue(-1)); // Paper - Perf: Use bigger expected size to reduce collisions
+     private final Map<Identifier, Holder.Reference<T>> byLocation = new HashMap<>(2048); // Paper - Perf: Use bigger expected size to reduce collisions
+     private final Map<ResourceKey<T>, Holder.Reference<T>> byKey = new HashMap<>(2048); // Paper - Perf: Use bigger expected size to reduce collisions
+-    private final Map<T, Holder.Reference<T>> byValue = new IdentityHashMap<>(2048); // Paper - Perf: Use bigger expected size to reduce collisions
++    private final @Nullable Map<T, Holder.Reference<T>> byValue; // Paper - Perf: Use bigger expected size to reduce collisions // Lophine - allow null
++    private final @Nullable it.unimi.dsi.fastutil.ints.Int2ObjectMap<Holder.Reference<T>> byIdPrimitive; // Lophine - primitive bimap
+     private final Map<ResourceKey<T>, RegistrationInfo> registrationInfos = new IdentityHashMap<>(2048); // Paper - Perf: Use bigger expected size to reduce collisions
+     private Lifecycle registryLifecycle;
+     private final Map<TagKey<T>, HolderSet.Named<T>> frozenTags = new IdentityHashMap<>();
+@@ -79,6 +80,15 @@ public class MappedRegistry<T> implements WritableRegistry<T> {
+         if (hasIntrusiveHolders) {
+             this.unregisteredIntrusiveHolders = new IdentityHashMap<>();
+         }
++        // Lophine start - primitive bimap
++        if (fun.bm.lophine.config.modules.experiment.FoliaOptimizationConfig.primitiveBimap) {
++            this.byIdPrimitive = new it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap<>(2048);
++            this.byValue = null;
++        } else {
++            this.byIdPrimitive = null;
++            this.byValue = new IdentityHashMap<>(2048);
++        }
++        // Lophine end
+     }
+ 
+     @Override
+@@ -110,7 +120,7 @@ public class MappedRegistry<T> implements WritableRegistry<T> {
+         Objects.requireNonNull(value);
+         if (this.byLocation.containsKey(key.identifier())) {
+             throw (IllegalStateException)Util.pauseInIde(new IllegalStateException("Adding duplicate key '" + key + "' to registry"));
+-        } else if (this.byValue.containsKey(value)) {
++        } else if (this.toId.containsKey(value)) { // Lophine - primitive bimap - use toId for O(1) check
+             throw (IllegalStateException)Util.pauseInIde(new IllegalStateException("Adding duplicate value '" + value + "' to registry"));
+         } else {
+             Holder.Reference<T> reference;
+@@ -127,7 +137,11 @@ public class MappedRegistry<T> implements WritableRegistry<T> {
+ 
+             this.byKey.put(key, reference);
+             this.byLocation.put(key.identifier(), reference);
+-            this.byValue.put(value, reference);
++            if (this.byIdPrimitive != null) {
++                this.byIdPrimitive.put(this.byId.size(), reference);
++            } else {
++                this.byValue.put(value, reference);
++            }
+             int size = this.byId.size();
+             this.byId.add(reference);
+             this.toId.put(value, size);
+@@ -141,13 +155,14 @@ public class MappedRegistry<T> implements WritableRegistry<T> {
+ 
+     @Override
+     public @Nullable Identifier getKey(T value) {
+-        Holder.Reference<T> reference = this.byValue.get(value);
++        Holder.Reference<T> reference = this.byIdPrimitive != null ? this.byIdPrimitive.get(this.toId.getInt(value)) : this.byValue.get(value); // Lophine - primitive bimap
+         return reference != null ? reference.key().identifier() : null;
+     }
+ 
+     @Override
+     public Optional<ResourceKey<T>> getResourceKey(T value) {
+-        return Optional.ofNullable(this.byValue.get(value)).map(Holder.Reference::key);
++        Holder.Reference<T> reference = this.byIdPrimitive != null ? this.byIdPrimitive.get(this.toId.getInt(value)) : this.byValue.get(value); // Lophine - primitive bimap
++        return Optional.ofNullable(reference).map(Holder.Reference::key);
+     }
+ 
+     @Override
+@@ -162,11 +177,18 @@ public class MappedRegistry<T> implements WritableRegistry<T> {
+ 
+     @Override
+     public @Nullable T byId(int id) {
++        if (this.byIdPrimitive != null) {
++            Holder.Reference<T> reference = this.byIdPrimitive.get(id);
++            return reference != null ? reference.value() : null;
++        }
+         return id >= 0 && id < this.byId.size() ? this.byId.get(id).value() : null;
+     }
+ 
+     @Override
+     public Optional<Holder.Reference<T>> get(int index) {
++        if (this.byIdPrimitive != null) {
++            return Optional.ofNullable(this.byIdPrimitive.get(index));
++        }
+         return index >= 0 && index < this.byId.size() ? Optional.ofNullable(this.byId.get(index)) : Optional.empty();
+     }
+ 
+@@ -187,7 +209,7 @@ public class MappedRegistry<T> implements WritableRegistry<T> {
+ 
+     @Override
+     public Holder<T> wrapAsHolder(T value) {
+-        Holder.Reference<T> reference = this.byValue.get(value);
++        Holder.Reference<T> reference = this.byIdPrimitive != null ? this.byIdPrimitive.get(this.toId.getInt(value)) : this.byValue.get(value); // Lophine - primitive bimap
+         return (Holder<T>)(reference != null ? reference : Holder.direct(value));
+     }
+ 
+@@ -292,7 +314,13 @@ public class MappedRegistry<T> implements WritableRegistry<T> {
+         } else {
+             this.frozen = true;
+             this.temporaryUnfrozenMap.clear(); // Paper - support pre-filling in registry mod API
+-            this.byValue.forEach((object, reference) -> reference.bindValue((T)object));
++            // Lophine start - primitive bimap
++            if (this.byIdPrimitive != null) {
++                this.byIdPrimitive.values().forEach(reference -> reference.bindValue(reference.value()));
++            } else {
++                this.byValue.forEach((object, reference) -> reference.bindValue((T)object));
++            }
++            // Lophine end
+             List<Identifier> list = this.byKey
+                 .entrySet()
+                 .stream()
