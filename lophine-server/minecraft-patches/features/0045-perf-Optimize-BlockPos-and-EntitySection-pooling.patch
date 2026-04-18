@@ -1,0 +1,95 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: GoldenCarrotMC <tbcnb650388@gmail.com>
+Date: Sat, 18 Apr 2026 11:49:31 +0800
+Subject: [PATCH] perf: Optimize BlockPos and EntitySection pooling
+
+
+diff --git a/net/minecraft/core/BlockPos.java b/net/minecraft/core/BlockPos.java
+index e87473fcb36e18d960ef3e4082995785d64b9c0f..ce4eb109a3b2f069f9c66d9db38ccdfa6c044933 100644
+--- a/net/minecraft/core/BlockPos.java
++++ b/net/minecraft/core/BlockPos.java
+@@ -284,7 +284,7 @@ public class BlockPos extends Vec3i {
+     }
+ 
+     public BlockPos.MutableBlockPos mutable() {
+-        return new BlockPos.MutableBlockPos(this.getX(), this.getY(), this.getZ());
++        return BlockPos.MutableBlockPos.acquire(this.getX(), this.getY(), this.getZ());
+     }
+ 
+     public Vec3 clampLocationWithin(Vec3 pos) {
+@@ -630,6 +630,30 @@ public class BlockPos extends Vec3i {
+     }
+ 
+     public static class MutableBlockPos extends BlockPos {
++        // Lophine start - MutableBlockPos pooling
++        private static final ThreadLocal<java.util.Queue<MutableBlockPos>> POOL = ThreadLocal.withInitial(java.util.ArrayDeque::new);
++
++        public static MutableBlockPos acquire(int x, int y, int z) {
++            if (!fun.bm.lophine.config.modules.experiment.FoliaOptimizationConfig.blockposPooling) {
++                return new MutableBlockPos(x, y, z);
++            }
++            java.util.Queue<MutableBlockPos> queue = POOL.get();
++            MutableBlockPos pos = queue.poll();
++            if (pos == null) return new MutableBlockPos(x, y, z);
++            pos.set(x, y, z);
++            return pos;
++        }
++
++        public void release() {
++            if (fun.bm.lophine.config.modules.experiment.FoliaOptimizationConfig.blockposPooling) {
++                java.util.Queue<MutableBlockPos> queue = POOL.get();
++                if (queue.size() < fun.bm.lophine.config.modules.experiment.FoliaOptimizationConfig.maxBlockposPoolSize) {
++                    queue.offer(this);
++                }
++            }
++        }
++        // Lophine end
++
+         public MutableBlockPos() {
+             this(0, 0, 0);
+         }
+diff --git a/net/minecraft/world/level/entity/EntitySection.java b/net/minecraft/world/level/entity/EntitySection.java
+index 93d8fb5a188765212008bb2012e52d05823bb103..2980690522b791018d1efc8c8258f2439f883546 100644
+--- a/net/minecraft/world/level/entity/EntitySection.java
++++ b/net/minecraft/world/level/entity/EntitySection.java
+@@ -13,6 +13,9 @@ public class EntitySection<T extends EntityAccess> {
+     private static final Logger LOGGER = LogUtils.getLogger();
+     private final ClassInstanceMultiMap<T> storage;
+     private Visibility chunkStatus;
++    // Lophine start - type indexing
++    private final it.unimi.dsi.fastutil.ints.Int2ObjectMap<java.util.List<T>> entitiesByType = new it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap<>();
++    // Lophine end
+ 
+     public EntitySection(Class<T> entityClazz, Visibility chunkStatus) {
+         this.chunkStatus = chunkStatus;
+@@ -27,10 +30,29 @@ public class EntitySection<T extends EntityAccess> {
+ 
+     public void add(T entity) {
+         this.storage.add(entity);
++        // Lophine start - type indexing
++        if (fun.bm.lophine.config.modules.experiment.FoliaOptimizationConfig.typeFilterableCollections && entity instanceof net.minecraft.world.entity.Entity nmsEntity) {
++            int typeId = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getId(nmsEntity.getType());
++            this.entitiesByType.computeIfAbsent(typeId, k -> new java.util.ArrayList<>()).add(entity);
++        }
++        // Lophine end
+     }
+ 
+     public boolean remove(T entity) {
+-        return this.storage.remove(entity);
++        if (this.storage.remove(entity)) {
++            // Lophine start - type indexing
++            if (fun.bm.lophine.config.modules.experiment.FoliaOptimizationConfig.typeFilterableCollections && entity instanceof net.minecraft.world.entity.Entity nmsEntity) {
++                int typeId = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getId(nmsEntity.getType());
++                java.util.List<T> list = this.entitiesByType.get(typeId);
++                if (list != null) {
++                    list.remove(entity);
++                }
++            }
++            // Lophine end
++            return true;
++        } else {
++            return false;
++        }
+     }
+ 
+     public AbortableIterationConsumer.Continuation getEntities(AABB bounds, AbortableIterationConsumer<T> consumer) {
