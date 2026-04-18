@@ -5,7 +5,7 @@ Subject: [PATCH] perf: optimize MappedRegistry and Mth for better performance
 
 
 diff --git a/net/minecraft/core/MappedRegistry.java b/net/minecraft/core/MappedRegistry.java
-index ad1558693564ebd18f5e16b85ae552d2af95efef..b10636ef68438ce74d2112d09f2bb5b327539a9f 100644
+index ad1558693564ebd18f5e16b85ae552d2af95efef..3c5484c3aeb91e9b36c2a9b6889446ebf235fe70 100644
 --- a/net/minecraft/core/MappedRegistry.java
 +++ b/net/minecraft/core/MappedRegistry.java
 @@ -6,6 +6,8 @@ import com.google.common.collect.ImmutableMap.Builder;
@@ -117,12 +117,12 @@ index ad1558693564ebd18f5e16b85ae552d2af95efef..b10636ef68438ce74d2112d09f2bb5b3
 -            this.byValue.forEach((object, reference) -> reference.bindValue((T)object));
 +            // Lophine start - primitive bimap
 +            if (this.byIdPrimitive != null) {
-+                this.toId.forEach((object, id) -> {
-+                    Holder.Reference<T> reference = this.byIdPrimitive.get(id.intValue());
++                for (it.unimi.dsi.fastutil.objects.Reference2IntMap.Entry<T> entry : this.toId.reference2IntEntrySet()) {
++                    Holder.Reference<T> reference = this.byIdPrimitive.get(entry.getIntValue());
 +                    if (reference != null) {
-+                        reference.bindValue(object);
++                        reference.bindValue(entry.getKey());
 +                    }
-+                });
++                }
 +            } else {
 +                this.byValue.forEach((object, reference) -> reference.bindValue((T)object));
 +            }
