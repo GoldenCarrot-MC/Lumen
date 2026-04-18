@@ -5,7 +5,7 @@ Subject: [PATCH] perf: optimize MappedRegistry and Mth for better performance
 
 
 diff --git a/net/minecraft/core/MappedRegistry.java b/net/minecraft/core/MappedRegistry.java
-index ad1558693564ebd18f5e16b85ae552d2af95efef..d6df98aafc9ff273ac87ee6a05f27461104be4b6 100644
+index ad1558693564ebd18f5e16b85ae552d2af95efef..7b92f3bd5577952b2feb28edaa46994b0efcda7a 100644
 --- a/net/minecraft/core/MappedRegistry.java
 +++ b/net/minecraft/core/MappedRegistry.java
 @@ -6,6 +6,8 @@ import com.google.common.collect.ImmutableMap.Builder;
@@ -110,14 +110,19 @@ index ad1558693564ebd18f5e16b85ae552d2af95efef..d6df98aafc9ff273ac87ee6a05f27461
          return (Holder<T>)(reference != null ? reference : Holder.direct(value));
      }
  
-@@ -292,7 +316,13 @@ public class MappedRegistry<T> implements WritableRegistry<T> {
+@@ -292,7 +316,18 @@ public class MappedRegistry<T> implements WritableRegistry<T> {
          } else {
              this.frozen = true;
              this.temporaryUnfrozenMap.clear(); // Paper - support pre-filling in registry mod API
 -            this.byValue.forEach((object, reference) -> reference.bindValue((T)object));
 +            // Lophine start - primitive bimap
 +            if (this.byIdPrimitive != null) {
-+                this.byIdPrimitive.values().forEach(reference -> reference.bindValue(reference.value()));
++                this.byIdPrimitive.values().forEach(reference -> {
++                    T value = this.byId(this.toId.getInt(reference.key()));
++                    if (value != null) {
++                        reference.bindValue(value);
++                    }
++                });
 +            } else {
 +                this.byValue.forEach((object, reference) -> reference.bindValue((T)object));
 +            }
