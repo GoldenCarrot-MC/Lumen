@@ -28,6 +28,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.leavesmc.leaves.protocol.core.LeavesProtocol;
 import org.leavesmc.leaves.protocol.core.ProtocolHandler;
 import org.leavesmc.leaves.protocol.syncmatica.exchange.*;
@@ -39,6 +40,8 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+
+import static fun.bm.lophine.LophineLogger.LOGGER;
 
 @LeavesProtocol.Register(namespace = "syncmatica")
 public class CommunicationManager implements LeavesProtocol {
@@ -178,6 +181,10 @@ public class CommunicationManager implements LeavesProtocol {
         if (id.equals(PacketType.MODIFY_REQUEST.identifier)) {
             final UUID placementId = packetBuf.readUUID();
             final ModifyExchangeServer modifier = new ModifyExchangeServer(placementId, source);
+            if (modifier.getPlacement() == null) {
+                LOGGER.warn("Could not find placement for modify request {}", placementId);
+                return;
+            }
             startExchange(modifier);
         }
     }
@@ -351,8 +358,12 @@ public class CommunicationManager implements LeavesProtocol {
         return downloadState.getOrDefault(syncmatic.getHash(), false);
     }
 
-    public static void setModifier(final @NotNull ServerPlacement syncmatic, final Exchange exchange) {
-        modifyState.put(syncmatic.getHash(), exchange);
+    public static void setModifier(final @NotNull ServerPlacement syncmatic, final @Nullable Exchange exchange) {
+        if (exchange == null) {
+            modifyState.remove(syncmatic.getHash());
+        } else {
+            modifyState.put(syncmatic.getHash(), exchange);
+        }
     }
 
     public static Exchange getModifier(final @NotNull ServerPlacement syncmatic) {
